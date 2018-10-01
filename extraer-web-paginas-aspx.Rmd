@@ -1,0 +1,50 @@
+---
+title: "Scraping - Table"
+author: "Podemos Aprender"
+date: "October 1, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#FROM: http://blog.corynissen.com/2015/01/using-rvest-to-scrape-html-table.html
+
+```{r}
+library("rvest")
+url <- "https://www.camara.cl/camara/transparencia/audiencias_consolidado.aspx"
+selectorDatos <- "#detail table" #U: css para encontrar la tabla con datos
+selectorProxPagina <- ".pages ul .next a" #U: css para encontrar el paginador que averigue usando la consola del borwser y me fije como identificar
+
+cnt <- 0
+datos <- NULL
+xs <- httr::GET(url, httr::write_disk(paste0("xpage.",cnt,".html"), overwrite = TRUE)) #A: la primera vez simplemente accedo
+for (cnt in 1:10) { #A: tengo una respuesta
+	xe <- read_html(xs) #A: xe tiene los nodos parseados
+
+	numPagActual = html_text(html_nodes(xe,css=".pages .current"))
+
+	datosPagActual <- xe %>%
+  	html_nodes(css=selectorDatos) %>%
+  	html_table()
+
+	if (cnt==1) { datos <- data.frame(datosPagActual) } else { datos <- rbind(datos, data.frame(datosPagActual)) }
+	#A: ya tome los datos, me preparo para pedir la pagina que sigue
+	
+	print(paste("OK cnt=",cnt,"actual=",numPagActual,"nrows=",nrow(datos)))
+	
+	ViewState <- html_attr(html_node(xe,css="#__VIEWSTATE"),"value")
+	ViewStateGen <- html_attr(html_node(xe,css="#__VIEWSTATEGENERATOR"),"value")
+	#A: los estandar de aspx
+	
+	NextActJs <- html_attr(html_node(xe,css=selectorProxPagina),"href")
+	NextAct <- regmatches(NextActJs,regexec("'([^']*)",NextActJs,selectorProxPagina))[[1]][2]
+	#A: el paginador que encontre usando la consola del borwser y me fije como identificar
+	
+	params <- list( "__VIEWSTATE"= ViewState, "__VIEWSTATEGENERATOR"= ViewStateGen, "__EVENTTARGET"= NextAct, "__EVENTARGUMENT"="")
+	xs <- httr::POST(url,body = params, encode="form", httr::add_headers(Referer= url), httr::write_disk(paste0("xpage.",cnt,".html"), overwrite = TRUE))
+	#A: volvi a hacer el post para pedir la proxima pag. con los parametros que averigue
+}
+
+```
